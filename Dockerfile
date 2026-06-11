@@ -1,54 +1,45 @@
 FROM php:8.2-apache
 
-# ============================================
-# MPM FIX - Remove conflicting modules
-# ============================================
+# Install dependencies
 RUN apt-get update && apt-get install -y \
-    libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
-    libzip-dev \
-    unzip \
-    && rm -rf /var/lib/apt/lists/* \
-    && a2dismod mpm_event mpm_worker 2>/dev/null || true \
-    && a2enmod mpm_prefork
+    libpng-dev libjpeg-dev libfreetype6-dev libzip-dev unzip \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions
+# Fix MPM
+RUN a2dismod mpm_event mpm_worker 2>/dev/null || true && a2enmod mpm_prefork
+
+# PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
-    gd \
-    pdo \
-    pdo_mysql \
-    mysqli \
-    zip \
-    opcache
+    && docker-php-ext-install gd pdo pdo_mysql mysqli zip opcache
 
-# Enable Apache modules
+# Apache modules
 RUN a2enmod rewrite headers ssl deflate expires
 
-# Install Redis extension
-RUN pecl install redis \
-    && docker-php-ext-enable redis
+# Redis
+RUN pecl install redis && docker-php-ext-enable redis
 
-# Set working directory
+# ============================================
+# KEY FIX: Override default Apache config
+# ============================================
+RUN echo '<VirtualHost *:80>\n\
+    DocumentRoot /var/www/html\n\
+    <Directory /var/www/html>\n\
+        Options -Indexes +FollowSymLinks\n\
+        AllowOverride All\n\
+        Require all granted\n\
+    </Directory>\n\
+    ErrorLog ${APACHE_LOG_DIR}/error.log\n\
+    CustomLog ${APACHE_LOG_DIR}/access.log combined\n\
+</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
+
+# Copy files
 WORKDIR /var/www/html
-
-# Copy all files
 COPY . /var/www/html/
 
-# Create storage directories
-RUN mkdir -p /var/www/html/storage/logs \
-    /var/www/html/storage/cache \
-    /var/www/html/storage/uploads \
+# Permissions
+RUN mkdir -p storage/logs storage/cache storage/uploads \
     && chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 /var/www/html/storage
-
-# Apache configuration
-RUN echo '<Directory /var/www/html>\n\
-    Options -Indexes +FollowSymLinks\n\
-    AllowOverride All\n\
-    Require all granted\n</Directory>' > /etc/apache2/conf-available/app.conf \
-    && a2enconf app
+    && chmod -R 775 storage
 
 EXPOSE 80
 CMD ["apache2-foreground"]
