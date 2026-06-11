@@ -5,6 +5,19 @@
 
 declare(strict_types=1);
 
+// HEALTHCHECK ENDPOINT - Railway er jonno
+if (($_SERVER['REQUEST_URI'] ?? '/') === '/' || ($_SERVER['REQUEST_URI'] ?? '') === '/health') {
+    http_response_code(200);
+    header('Content-Type: application/json');
+    echo json_encode([
+        'status' => 'ok',
+        'service' => 'OngonWear Dropshipping API',
+        'timestamp' => time(),
+        'version' => '1.0'
+    ]);
+    exit;
+}
+
 require_once __DIR__ . '/lib/response.php';
 require_once __DIR__ . '/lib/logger.php';
 require_once __DIR__ . '/api/middleware/cors.php';
