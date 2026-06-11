@@ -5,8 +5,11 @@
 
 declare(strict_types=1);
 
-// HEALTHCHECK ENDPOINT - Railway er jonno
-if (($_SERVER['REQUEST_URI'] ?? '/') === '/' || ($_SERVER['REQUEST_URI'] ?? '') === '/health') {
+// ============================================
+// HEALTHCHECK ENDPOINT (Railway)
+// ============================================
+$uri = $_SERVER['REQUEST_URI'] ?? '/';
+if ($uri === '/' || $uri === '/health' || $uri === '/healthcheck') {
     http_response_code(200);
     header('Content-Type: application/json');
     echo json_encode([
@@ -18,6 +21,10 @@ if (($_SERVER['REQUEST_URI'] ?? '/') === '/' || ($_SERVER['REQUEST_URI'] ?? '') 
     exit;
 }
 
+// ============================================
+// REST OF THE CODE
+// ============================================
+
 require_once __DIR__ . '/lib/response.php';
 require_once __DIR__ . '/lib/logger.php';
 require_once __DIR__ . '/api/middleware/cors.php';
@@ -28,7 +35,9 @@ require_once __DIR__ . '/api/middleware/audit-log.php';
 // Load environment
 if (!file_exists(__DIR__ . '/.env')) {
     http_response_code(500);
-    die(json_encode(['error' => 'Environment not configured']));
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Environment not configured']);
+    exit;
 }
 
 // Parse .env
@@ -49,15 +58,18 @@ if (($env['APP_DEBUG'] ?? 'false') === 'true') {
     ini_set('display_errors', '0');
 }
 
-// Security: HTTPS check
-if (($env['APP_ENV'] ?? 'production') === 'production' && 
-    empty($_SERVER['HTTPS']) && 
-    $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' !== 'https') {
-    JSONResponse::error('HTTPS required', 403);
-    exit;
+// Security: Validate HTTPS in production
+if (($env['APP_ENV'] ?? 'production') === 'production') {
+    $proto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+    if (empty($_SERVER['HTTPS']) && $proto !== 'https') {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'HTTPS required']);
+        exit;
+    }
 }
 
-// Initialize logger
+// Initialize audit logger
 $logger = new SecurityLogger($env);
 
 // Apply CORS
@@ -73,7 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $ipLimiter = new RateLimiter($env, 'ip');
 if (!$ipLimiter->allow($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0')) {
     $logger->log('RATE_LIMIT_IP_BLOCKED', $_SERVER['REMOTE_ADDR'] ?? 'unknown');
-    JSONResponse::error('Rate limit exceeded. Try again later.', 429);
+    http_response_code(429);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Rate limit exceeded. Try again later.']);
     exit;
 }
 
@@ -84,7 +98,9 @@ $parts = explode('/', $uri);
 
 // API Version check
 if (!isset($parts[0]) || $parts[0] !== 'api' || !isset($parts[1])) {
-    JSONResponse::error('Invalid API endpoint', 404);
+    http_response_code(404);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Invalid API endpoint']);
     exit;
 }
 
@@ -92,7 +108,9 @@ $version = $parts[1];
 $endpoint = $parts[2] ?? '';
 
 if ($version !== 'v1') {
-    JSONResponse::error('API version not supported', 400);
+    http_response_code(400);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'API version not supported']);
     exit;
 }
 
@@ -107,14 +125,16 @@ $routes = [
 ];
 
 if (!isset($routes[$endpoint])) {
-    JSONResponse::error('Endpoint not found', 404);
+    http_response_code(404);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Endpoint not found']);
     exit;
 }
 
 // Log request start
 $requestId = bin2hex(random_bytes(8));
 $logger->log('REQUEST_START', $requestId, [
-    'endpoint' => $endpoint, 
+    'endpoint' => $endpoint,
     'method' => $_SERVER['REQUEST_METHOD']
 ]);
 
