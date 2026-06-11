@@ -1,13 +1,17 @@
 FROM php:8.2-apache
 
-# Install system dependencies
+# ============================================
+# MPM FIX - Remove conflicting modules
+# ============================================
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
     libzip-dev \
     unzip \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && a2dismod mpm_event mpm_worker 2>/dev/null || true \
+    && a2enmod mpm_prefork
 
 # Install PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
@@ -32,7 +36,7 @@ WORKDIR /var/www/html
 # Copy all files
 COPY . /var/www/html/
 
-# Create storage directories with proper permissions
+# Create storage directories
 RUN mkdir -p /var/www/html/storage/logs \
     /var/www/html/storage/cache \
     /var/www/html/storage/uploads \
@@ -46,8 +50,5 @@ RUN echo '<Directory /var/www/html>\n\
     Require all granted\n</Directory>' > /etc/apache2/conf-available/app.conf \
     && a2enconf app
 
-# Expose port
 EXPOSE 80
-
-# Start Apache
 CMD ["apache2-foreground"]
