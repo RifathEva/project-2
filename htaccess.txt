@@ -1,0 +1,43 @@
+# ============================================
+# SECURITY HARDENING
+# ============================================
+
+Options -Indexes -ExecCGI -Includes
+ServerSignature Off
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Block SQL injection patterns
+    RewriteCond %{QUERY_STRING} (\%27)|(\')|(\-\-)|(\%23)|(#) [NC,OR]
+    RewriteCond %{QUERY_STRING} (union|select|insert|update|delete|drop|create|alter|exec) [NC]
+    RewriteRule .* - [F]
+    
+    # Block sensitive files
+    RewriteRule ^\.env - [F,L]
+    RewriteRule ^composer\. - [F,L]
+    RewriteRule ^Dockerfile - [F,L]
+    RewriteRule ^railway\.json - [F,L]
+    RewriteRule ^database/ - [F,L]
+    
+    # Main entry point
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php [QSA,L]
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set X-Frame-Options "DENY"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header unset X-Powered-By
+    Header unset Server
+</IfModule>
+
+<FilesMatch "\.(env|log|ini|sh|bak|sql)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
